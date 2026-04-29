@@ -2,155 +2,148 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 const TURNS = {
-  X : 'x',
-  O : 'o'
+  X: 'x',
+  O: 'o'
 } as const;
 
-//type turnType = typeof TURNS[keyof typeof TURNS];
-type turnType = "x" | "o";
+type turnType = typeof TURNS[keyof typeof TURNS];
 
-const matrizSize = 3;
+const matrizSize = 5;
+const nForWin = 3;
 
 type squareType = {
-  children: ReactNode,
-  isSelected?: boolean,
-  updateBoard?: (index:number) => void,
-  index?: number
+  children: ReactNode;
+  isSelected?: boolean;
+  onClick?: () => void;
 }
 
-const Square = ({ children, isSelected, updateBoard, index}: squareType) =>{
-    const className = `square ${ isSelected? 'is-selected': "" }`
+const Square = ({ children, isSelected, onClick }: squareType) => {
+  const className = `square ${isSelected ? 'is-selected' : ""}`;
 
-    const handleClick = () =>{
-      if (updateBoard && index !== undefined) {
-      updateBoard(index);
-    }
-    };
-    return (
-    <div onClick={handleClick} className={className}>
+  return (
+    <div onClick={onClick} className={className}>
       {children}
     </div>
-    );
+  );
 };
 
+// Lógica para determinar ganador usando directamente la matriz
+const checkWinner = (board: (turnType | null)[][], n: number, nForWin: number) => {
+  const directions = [
+    [0, 1],   // Horizontal hacia la derecha
+    [1, 0],   // Vertical hacia abajo
+    [1, 1],   // Diagonal hacia abajo a la derecha
+    [1, -1]   // Diagonal hacia abajo a la izquierda
+  ];
 
-//Logica para determinar ganador
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const cell = board[r][c];
 
-const checkWinnerOptimized = (board: (turnType | null)[]) => {
-  const n = matrizSize; // Tamaño del tablero
-  const rows = [0, 0, 0];
-  const cols = [0, 0, 0];
-  let diag1 = 0;
-  let diag2 = 0;
+      // Si la celda está vacía, saltamos
+      if (!cell) continue;
 
-  for (let i = 0; i < board.length; i++) {
-    const cell = board[i];
-    if (!cell) continue;
+      for (const [dr, dc] of directions) {
+        let count = 1;
 
-    // Convertimos el índice plano (0-8) a coordenadas (fila, columna)
-    const row = Math.floor(i / n);
-    const col = i % n;
-    
-    // Asignamos valor: X = 1, O = -1
-    const value = cell === 'x' ? 1 : -1;
+        for (let step = 1; step < nForWin; step++) {
+          const nextR = r + dr * step;
+          const nextC = c + dc * step;
 
-    rows[row] += value;
-    cols[col] += value;
-    
-    if (row === col) diag1 += value;
-    if (row + col === n - 1) diag2 += value;
+          // Verificamos los límites de la matriz directamente
+          if (nextR < 0 || nextR >= n || nextC < 0 || nextC >= n) break;
 
-    // Si algún contador llega a 3 o -3, hay ganador
-    if (
-      Math.abs(rows[row]) === n ||
-      Math.abs(cols[col]) === n ||
-      Math.abs(diag1) === n ||
-      Math.abs(diag2) === n
-    ) {
-      return cell; // Retorna 'x' o 'o'
+          // Acceso directo con coordenadas 2D
+          if (board[nextR][nextC] === cell) {
+            count++;
+          } else {
+            break; 
+          }
+        }
+
+        if (count === nForWin) {
+          return cell;
+        }
+      }
     }
   }
 
   return null;
 };
 
-function App(){
-  const [board, setBoard] = useState<(turnType | null)[]>(
-    Array(matrizSize**2).fill(null)
-  )
-  const [turn, setTurn] = useState<turnType>(TURNS.X)
+// Función auxiliar para crear la matriz inicial vacía
+const createEmptyBoard = () => {
+  return Array(matrizSize).fill(null).map(() => Array(matrizSize).fill(null));
+};
 
-  const [winner, setWinner] = useState<boolean | null>(null) // null no hay ganador, false empate
-  const [whoWin, setWhoWin] = useState<turnType | null>(null) // null no hay ganador, false empate
+function App() {
+  // El estado ahora es explícitamente una matriz: (turnType | null)[][]
+  const [board, setBoard] = useState<(turnType | null)[][]>(createEmptyBoard());
+  const [turn, setTurn] = useState<turnType>(TURNS.X);
 
+  const winner = checkWinner(board, matrizSize, nForWin);
+  
+  // Verificamos el empate comprobando que ninguna fila contenga un 'null'
+  const isDraw = !winner && board.every((row) => row.every((cell) => cell !== null));
 
-  const updateBoard = (index: number) => {
-    // EXTRA: Evitamos que se sobrescriba una casilla que ya tiene un valor
-    if (board[index] || winner !== null) return;
+  const updateBoard = (rowIndex: number, colIndex: number) => {
+    // 1. Evitamos sobreescribir o jugar si ya hay ganador
+    if (board[rowIndex][colIndex] || winner) return;
 
-    const newBoard = [...board];
-    newBoard[index] = turn;
+    // 2. Copiamos la matriz (Deep Copy de 1 nivel) para no mutar el estado
+    const newBoard = board.map(row => [...row]);
+    
+    // 3. Actualizamos la celda específica
+    newBoard[rowIndex][colIndex] = turn;
     setBoard(newBoard);
 
-    const newTurn = turn === TURNS.X ? TURNS.O : TURNS.X;
-    setTurn(newTurn);
-
-    const newWinner = checkWinnerOptimized(newBoard);
-    console.log(newWinner)
-    
-    if (newWinner) {
-      setWhoWin(newWinner);
-      setWinner(true);
-    } else if (newBoard.every(item => item !== null)) {
-      // Si no hay ganador y no quedan espacios vacíos
-      setWinner(false);
-    } else {
-      // Solo cambiamos el turno si el juego continúa
-      const newTurn = turn === TURNS.X ? TURNS.O : TURNS.X;
-      setTurn(newTurn);
-    }
-
-    
+    // 4. Cambiamos de turno
+    setTurn(turn === TURNS.X ? TURNS.O : TURNS.X);
   };
-  const winnerText = winner === true ? `Ganador: ${whoWin?.toUpperCase()}` : winner === false ? "No hubo ganadores" : "En juego...";
 
   const resetGame = () => {
-  setBoard(Array(matrizSize**2).fill(null));
-  setTurn(TURNS.X);
-  setWinner(null);
-  setWhoWin(null);
+    setBoard(createEmptyBoard());
+    setTurn(TURNS.X);
   };
 
+  const winnerText = winner 
+    ? `Ganador: ${winner.toUpperCase()}` 
+    : isDraw 
+      ? "Empate - No hubo ganadores" 
+      : "En juego...";
 
-  return <main className="board">
-    <h1>Tic Tac Toe</h1>
-    <section 
+  return (
+    <main className="board">
+      <h1>Tic Tac Toe</h1>
+      <section 
         className="game" 
-        style={{ 
-          '--matrix-size': matrizSize 
-        } as React.CSSProperties} // El casting es necesario en TS para variables custom
+        style={{ '--matrix-size': matrizSize } as React.CSSProperties} 
       >
-        {board.map((_, index) => {
-          return (
+        {/* Usamos un doble .map para iterar filas y columnas */}
+        {board.map((row, rowIndex) => (
+          row.map((cell, colIndex) => (
             <Square
-              key={index}
-              index={index}
-              updateBoard={updateBoard}
+              key={`${rowIndex}-${colIndex}`}
+              onClick={() => updateBoard(rowIndex, colIndex)}
             >
-              {board[index]}
+              {cell}
             </Square>
-          );
-        })}
+          ))
+        ))}
       </section>
-    <section className="turn">
-      <Square isSelected={turn === TURNS.X}>{TURNS.X}</Square>
-      <Square isSelected={turn === TURNS.O}>{TURNS.O}</Square>
-    </section>
-    <h1>
-      {winnerText }
-    </h1>
-    <button onClick={resetGame}>Reiniciar</button>
-  </main>
+      
+      <section className="turn">
+        <Square isSelected={turn === TURNS.X}>{TURNS.X}</Square>
+        <Square isSelected={turn === TURNS.O}>{TURNS.O}</Square>
+      </section>
+      
+      <h1>{winnerText}</h1>
+      
+      {(winner || isDraw) && (
+        <button onClick={resetGame}>Reiniciar</button>
+      )}
+    </main>
+  );
 }
 
-export default App
+export default App;
